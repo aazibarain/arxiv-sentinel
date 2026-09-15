@@ -1,4 +1,4 @@
-"""Phase 1 orchestration: discover, normalize, embed, and filter daily papers."""
+"""Daily pipeline: discover, filter, judge novelty, and remember papers."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from backend.ingestion.base import PaperSource
 from backend.ingestion.openalex_source import OpenAlexSource
 from backend.ingestion.schema import PaperRecord
 from backend.ingestion.semantic_scholar_source import SemanticScholarSource
+from backend.memory.novelty import NoveltyDetector, NoveltyThresholds
+from backend.memory.vector_store import ChromaVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +33,18 @@ class PhaseOneResult:
     source_errors: dict[str, str]
 
 
+@dataclass(frozen=True)
+class PhaseTwoResult(PhaseOneResult):
+    memory_count_before: int
+    memory_count_after: int
+
+
 def build_sources(settings: Settings) -> list[PaperSource]:
     """Create the production source adapters from environment settings."""
 
     return [
         ArxivSource(timeout_seconds=settings.source_request_timeout_seconds),
         SemanticScholarSource(
-            api_key=settings.semantic_scholar_api_key,
             timeout_seconds=settings.source_request_timeout_seconds,
         ),
         OpenAlexSource(
@@ -105,8 +112,60 @@ async def run_phase_one(
     return PhaseOneResult(target_date, candidates, relevant, counts, errors)
 
 
-def result_as_dict(result: PhaseOneResult) -> dict[str, Any]:
-    return {
+def build_novelty_detector(settings: Settings) -> NoveltyDetector:
+    memory = ChromaVectorStore(
+        settings.chroma_path,
+        collection_name=settings.chroma_collection,
+    )
+    return NoveltyDetector(
+        memory,
+        thresholds=NoveltyThresholds(
+            incremental=settings.novelty_incremental_threshold,
+            duplicate=settings.novelty_duplicate_threshold,
+        ),
+        top_k=settings.novelty_top_k,
+    )
+
+
+async def run_pipeline(
+    target_date: date,
+    *,
+    limit_per_source: int = 50,
+    threshold: float | None = None,
+    settings: Settings | None = None,
+    sources: list[PaperSource] | None = None,
+    relevance_filter: RelevanceFilter | None = None,
+    novelty_detector: NoveltyDetector | None = None,
+) -> PhaseTwoResult:
+    """Execute ingestion, relevance filtering, novelty analysis, and persistence."""
+
+    settings = settings or get_settings()
+    phase_one = await run_phase_one(
+        target_date,
+        limit_per_source=limit_per_source,
+        threshold=threshold,
+        settings=settings,
+        sources=sources,
+        relevance_filter=relevance_filter,
+    )
+    if novelty_detector is None:
+        novelty_detector = await asyncio.to_thread(build_novelty_detector, settings)
+    memory_before = await asyncio.to_thread(novelty_detector.memory.count)
+    processed = await asyncio.to_thread(novelty_detector.process, phase_one.relevant)
+    memory_after = await asyncio.to_thread(novelty_detector.memory.count)
+    return PhaseTwoResult(
+        target_date=phase_one.target_date,
+        candidates=phase_one.candidates,
+        relevant=processed,
+        source_counts=phase_one.source_counts,
+        source_errors=phase_one.source_errors,
+        memory_count_before=memory_before,
+        memory_count_after=memory_after,
+    )
+
+
+def result_as_dict(result: PhaseOneResult | PhaseTwoResult) -> dict[str, Any]:
+    payload = {
         "target_date": result.target_date.isoformat(),
         "candidate_count": len(result.candidates),
         "relevant_count": len(result.relevant),
@@ -114,6 +173,10 @@ def result_as_dict(result: PhaseOneResult) -> dict[str, Any]:
         "source_errors": result.source_errors,
         "papers": [paper.model_dump(mode="json") for paper in result.relevant],
     }
+    if isinstance(result, PhaseTwoResult):
+        payload["memory_count_before"] = result.memory_count_before
+        payload["memory_count_after"] = result.memory_count_after
+    return payload
 
 
 def _parse_date(value: str) -> date:
@@ -137,26 +200,34 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_human(result: PhaseOneResult) -> None:
+def _print_human(result: PhaseOneResult | PhaseTwoResult) -> None:
     print(f"ArXiv Sentinel digest for {result.target_date.isoformat()}")
     print(f"Candidates: {len(result.candidates)} | Relevant: {len(result.relevant)}")
-    source_summary = ", ".join(
-        f"{name}={count}" for name, count in result.source_counts.items()
-    )
+    source_summary = ", ".join(f"{name}={count}" for name, count in result.source_counts.items())
     print("Sources: " + source_summary)
+    if isinstance(result, PhaseTwoResult):
+        print(f"Memory: {result.memory_count_before} -> {result.memory_count_after} papers")
     for name, error in result.source_errors.items():
         print(f"Warning: {name}: {error}")
     for index, paper in enumerate(result.relevant, start=1):
         sources = ", ".join(sorted(paper.source_ids))
-        print(f"\n{index}. [{paper.relevance_score:.3f}] {paper.title}")
+        novelty = (
+            f" | {paper.novelty_verdict} ({paper.novelty_score:.3f})"
+            if paper.novelty_verdict and paper.novelty_score is not None
+            else ""
+        )
+        print(f"\n{index}. [relevance {paper.relevance_score:.3f}{novelty}] {paper.title}")
         print(f"   {', '.join(paper.authors)} | {sources}")
+        if paper.novelty_matches:
+            closest = paper.novelty_matches[0]
+            print(f"   Closest prior paper: {closest.title} ({closest.similarity:.3f})")
 
 
 def main() -> None:
     args = _build_parser().parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     result = asyncio.run(
-        run_phase_one(
+        run_pipeline(
             args.date,
             limit_per_source=args.limit_per_source,
             threshold=args.threshold,

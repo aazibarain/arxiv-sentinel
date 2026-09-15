@@ -22,6 +22,17 @@ class SummaryCitation(BaseModel):
     source_span: str
 
 
+class SimilarPaper(BaseModel):
+    """A prior memory record used as evidence for a novelty verdict."""
+
+    memory_id: str
+    title: str
+    published_date: date
+    similarity: float = Field(ge=0.0, le=1.0)
+    source_ids: dict[str, str] = Field(default_factory=dict)
+    source_urls: dict[str, str] = Field(default_factory=dict)
+
+
 class PaperRecord(BaseModel):
     """Canonical contract between ingestion and all downstream phases.
 
@@ -41,6 +52,7 @@ class PaperRecord(BaseModel):
     relevance_score: float | None = Field(default=None, ge=-1.0, le=1.0)
     novelty_score: float | None = Field(default=None, ge=0.0, le=1.0)
     novelty_verdict: Literal["novel", "incremental", "duplicate"] | None = None
+    novelty_matches: list[SimilarPaper] = Field(default_factory=list)
     summary: str | None = None
     summary_citations: list[SummaryCitation] = Field(default_factory=list)
     ingested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

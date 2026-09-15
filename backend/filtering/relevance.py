@@ -56,9 +56,7 @@ class RelevanceFilter:
         relevance_scores = similarity.max(axis=1)
 
         relevant = []
-        for paper, embedding, score in zip(
-            papers, paper_embeddings, relevance_scores, strict=True
-        ):
+        for paper, embedding, score in zip(papers, paper_embeddings, relevance_scores, strict=True):
             paper.embedding = embedding.astype(float).tolist()
             paper.relevance_score = float(np.clip(score, -1.0, 1.0))
             if paper.relevance_score >= self.threshold:

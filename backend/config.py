@@ -1,6 +1,7 @@
 """Runtime configuration and domain reference material."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,11 +17,15 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str | None = None
-    semantic_scholar_api_key: str | None = None
     openalex_mailto: str | None = None
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     relevance_threshold: float = Field(default=0.50, ge=-1.0, le=1.0)
     source_request_timeout_seconds: float = Field(default=30.0, gt=0)
+    chroma_path: Path = Path("data/chroma")
+    chroma_collection: str = "arxiv_sentinel_papers"
+    novelty_incremental_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    novelty_duplicate_threshold: float = Field(default=0.92, ge=0.0, le=1.0)
+    novelty_top_k: int = Field(default=5, ge=1, le=100)
 
 
 @lru_cache

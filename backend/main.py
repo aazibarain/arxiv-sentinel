@@ -7,4 +7,4 @@ app = FastAPI(title="ArXiv Sentinel API", version="0.1.0")
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "phase": "ingestion-and-relevance"}
+    return {"status": "ok", "phase": "persistent-memory-and-novelty"}
