@@ -32,6 +32,7 @@ function emptyPaper(input: Pick<Paper, "title" | "abstract" | "authors" | "publi
 async function fetchWithRetry(url: string, init: RequestInit = {}, attempts = 3): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let retryDelayMs = 600 * 2 ** attempt;
     try {
       const response = await fetch(url, {
         ...init,
@@ -43,10 +44,14 @@ async function fetchWithRetry(url: string, init: RequestInit = {}, attempts = 3)
         throw new Error(`${response.status} ${response.statusText}`);
       }
       lastError = new Error(`${response.status} ${response.statusText}`);
+      const retryAfterSeconds = Number(response.headers.get("retry-after"));
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        retryDelayMs = Math.max(retryDelayMs, Math.min(retryAfterSeconds * 1000, 5_000));
+      }
     } catch (error) {
       lastError = error;
     }
-    if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 600 * 2 ** attempt));
+    if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
   }
   throw lastError instanceof Error ? lastError : new Error("Source request failed");
 }
@@ -134,22 +139,30 @@ export function parseSemanticScholarItem(item: SemanticScholarItem): Paper | nul
 export async function fetchSemanticScholar(startDate: string, endDate: string, limit: number): Promise<Paper[]> {
   const perQuery = Math.min(100, Math.max(1, Math.ceil(limit / DISCOVERY_QUERIES.length)));
   const records = new Map<string, Paper>();
+  const failures: Error[] = [];
   const inclusiveEnd = new Date(`${endDate}T00:00:00Z`);
   inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
-  for (const query of DISCOVERY_QUERIES) {
+  for (const [index, query] of DISCOVERY_QUERIES.entries()) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1_100));
     const params = new URLSearchParams({
       query,
       publicationDateOrYear: `${startDate}:${inclusiveEnd.toISOString().slice(0, 10)}`,
       fields: "paperId,externalIds,url,title,abstract,authors,publicationDate,citationCount",
       limit: String(perQuery),
     });
-    const response = await fetchWithRetry(`https://api.semanticscholar.org/graph/v1/paper/search?${params}`);
-    const payload = (await response.json()) as { data?: SemanticScholarItem[] };
-    for (const item of payload.data ?? []) {
-      const paper = parseSemanticScholarItem(item);
-      if (paper) records.set(paper.source_ids.semantic_scholar, paper);
+    try {
+      const response = await fetchWithRetry(`https://api.semanticscholar.org/graph/v1/paper/search?${params}`);
+      const payload = (await response.json()) as { data?: SemanticScholarItem[] };
+      for (const item of payload.data ?? []) {
+        const paper = parseSemanticScholarItem(item);
+        if (paper) records.set(paper.source_ids.semantic_scholar, paper);
+      }
+    } catch (error) {
+      failures.push(error instanceof Error ? error : new Error("Semantic Scholar query failed"));
     }
   }
+  if (!records.size && failures.length) throw failures.at(-1);
+  if (failures.length) console.warn(`[ingest:semantic_scholar] ${failures.length} discovery queries failed; preserving partial results`);
   return [...records.values()].slice(0, limit);
 }
 
