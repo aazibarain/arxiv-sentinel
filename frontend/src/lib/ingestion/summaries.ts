@@ -150,7 +150,11 @@ export async function summarizePapers(papers: Paper[], priorById: Map<string, Pa
   const pending: Paper[] = [];
   for (const paper of papers) {
     const prior = priorById.get(paper.canonical_id);
-    if (prior?.summary && prior.summary_citations.length) {
+    if (
+      prior?.summary &&
+      prior.summary_citations.length &&
+      prior.summary_confidence !== "limited"
+    ) {
       paper.summary = prior.summary;
       paper.why_it_matters = prior.why_it_matters;
       paper.summary_confidence = prior.summary_confidence ?? "moderate";
