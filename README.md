@@ -5,7 +5,7 @@ learning and AI security. It discovers newly published work from arXiv, Semantic
 Scholar, and OpenAlex, normalizes every result into one schema, and makes the final
 relevance decision with semantic embeddings rather than keyword rules.
 
-This repository currently contains the Phase 1 through Phase 3 vertical slices:
+This repository currently contains the Phase 1 through Phase 4 vertical slices:
 
 - adapters for all three research sources;
 - a shared, validated `PaperRecord` contract;
@@ -16,7 +16,8 @@ This repository currently contains the Phase 1 through Phase 3 vertical slices:
 - keyless Semantic Scholar and OpenAlex research tools;
 - structured Gemini summaries with claim-to-abstract citations;
 - a programmatic grounding gate that rejects and retries unsupported output;
-- deterministic tests for ingestion, relevance, novelty, tools, and grounding.
+- cross-source identity reconciliation with inspectable match evidence;
+- deterministic tests for ingestion, relevance, reconciliation, novelty, tools, and grounding.
 
 Discovery queries are intentionally broad. They control how much material each
 source returns, but they do **not** decide relevance. The local embedding model does
@@ -66,6 +67,9 @@ arXiv / Semantic Scholar / OpenAlex
        max similarity to topic references
                   |
                   v
+  identifier + title/author/date reconciliation
+                  |
+                  v
        Chroma nearest-neighbor memory
                   |
                   v
@@ -108,8 +112,14 @@ matches, the supplied abstract and that every generated sentence maps to a citat
 claim. Failed grounding is returned to Gemini for correction up to three times.
 Duplicates are retained in memory but skipped for generation to conserve quota.
 
+Before novelty analysis, records are reconciled across providers. Shared arXiv, DOI,
+Semantic Scholar, or OpenAlex identifiers are decisive. Without a shared identifier,
+the default rule requires at least `0.90` title similarity, `0.50` author-surname
+overlap, and publication dates within 30 days. A merged record keeps the richest
+abstract, earliest publication date, highest citation count, all source IDs and
+URLs, and explicit evidence describing why the match was accepted.
+
 ## Roadmap
 
-- Phase 4: cross-source identity reconciliation.
 - Phase 5: FastAPI digest/Q&A endpoints and the Next.js dashboard.
 - Phase 6: scheduled ingestion after persistence/deployment decisions are settled.

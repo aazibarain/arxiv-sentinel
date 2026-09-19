@@ -35,6 +35,17 @@ class SimilarPaper(BaseModel):
     source_urls: dict[str, str] = Field(default_factory=dict)
 
 
+class ReconciliationEvidence(BaseModel):
+    """Why two source records were judged to represent the same paper."""
+
+    left_source_ids: dict[str, str]
+    right_source_ids: dict[str, str]
+    matched_by: Literal["shared_identifier", "fuzzy_metadata"]
+    title_similarity: float = Field(ge=0.0, le=1.0)
+    author_overlap: float = Field(ge=0.0, le=1.0)
+    publication_date_delta_days: int = Field(ge=0)
+
+
 class PaperRecord(BaseModel):
     """Canonical contract between ingestion and all downstream phases.
 
@@ -55,6 +66,7 @@ class PaperRecord(BaseModel):
     novelty_score: float | None = Field(default=None, ge=0.0, le=1.0)
     novelty_verdict: Literal["novel", "incremental", "duplicate"] | None = None
     novelty_matches: list[SimilarPaper] = Field(default_factory=list)
+    reconciliation_evidence: list[ReconciliationEvidence] = Field(default_factory=list)
     summary: str | None = None
     why_it_matters: str | None = None
     summary_citations: list[SummaryCitation] = Field(default_factory=list)

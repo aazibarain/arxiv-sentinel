@@ -94,6 +94,56 @@ def test_full_pipeline_remembers_paper_and_detects_rerun(tmp_path: object) -> No
     assert second.memory_count_after == 1
 
 
+def test_full_pipeline_reconciles_cross_source_duplicate_before_memory(
+    tmp_path: object,
+) -> None:
+    first_abstract = "A prompt injection attack against an autonomous agent."
+    second_abstract = (
+        "A prompt injection attack against an autonomous agent with a detailed evaluation."
+    )
+    vectors = {
+        "prototype": [1.0, 0.0],
+        first_abstract: [1.0, 0.0],
+        second_abstract: [1.0, 0.0],
+    }
+    relevance = RelevanceFilter(MappingEmbedder(vectors), threshold=0.5, references=("prototype",))
+    detector = NoveltyDetector(ChromaVectorStore(tmp_path))
+    arxiv = PaperRecord(
+        title="Agent Attack",
+        abstract=first_abstract,
+        authors=["Researcher One"],
+        published_date=date(2026, 9, 15),
+        source_ids={"arxiv": "2609.30000"},
+        source_urls={"arxiv": "https://arxiv.org/abs/2609.30000"},
+    )
+    semantic_scholar = PaperRecord(
+        title="Agent Attack",
+        abstract=second_abstract,
+        authors=["Researcher One"],
+        published_date=date(2026, 9, 15),
+        source_ids={"arxiv": "2609.30000", "semantic_scholar": "S2-30000"},
+        source_urls={"semantic_scholar": "https://example.test/S2-30000"},
+    )
+
+    result = asyncio.run(
+        run_pipeline(
+            date(2026, 9, 15),
+            sources=[
+                FakeSource("arxiv", [arxiv]),
+                FakeSource("semantic_scholar", [semantic_scholar]),
+            ],
+            relevance_filter=relevance,
+            novelty_detector=detector,
+        )
+    )
+
+    assert result.relevant_count_before_reconciliation == 2
+    assert result.reconciliation_merged_count == 1
+    assert len(result.relevant) == 1
+    assert result.memory_count_after == 1
+    assert set(result.relevant[0].source_ids) == {"arxiv", "semantic_scholar"}
+
+
 class FakeResearchTools:
     async def build_context(self, paper: PaperRecord) -> ResearchContext:
         return ResearchContext(memory_matches=paper.novelty_matches)

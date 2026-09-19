@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     summary_max_attempts: int = Field(default=3, ge=1, le=5)
     grounding_span_similarity_threshold: float = Field(default=0.90, ge=0.5, le=1.0)
+    dedupe_title_similarity_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
+    dedupe_author_overlap_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
+    dedupe_date_window_days: int = Field(default=30, ge=0, le=365)
 
 
 @lru_cache

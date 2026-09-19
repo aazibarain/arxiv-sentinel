@@ -42,6 +42,8 @@ def _metadata_for(paper: PaperRecord) -> dict[str, str | int | float | bool]:
         "source_urls_json": json.dumps(paper.source_urls, sort_keys=True),
         "ingested_at": paper.ingested_at.isoformat(),
     }
+    if paper.canonical_id is not None:
+        metadata["canonical_id"] = paper.canonical_id
     if paper.relevance_score is not None:
         metadata["relevance_score"] = paper.relevance_score
     if paper.novelty_score is not None:
@@ -57,6 +59,11 @@ def _metadata_for(paper: PaperRecord) -> dict[str, str | int | float | bool]:
     if paper.summary_citations:
         metadata["summary_citations_json"] = json.dumps(
             [citation.model_dump(mode="json") for citation in paper.summary_citations],
+            ensure_ascii=False,
+        )
+    if paper.reconciliation_evidence:
+        metadata["reconciliation_evidence_json"] = json.dumps(
+            [evidence.model_dump(mode="json") for evidence in paper.reconciliation_evidence],
             ensure_ascii=False,
         )
     return metadata

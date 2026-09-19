@@ -23,6 +23,7 @@ from backend.ingestion.schema import PaperRecord
 from backend.ingestion.semantic_scholar_source import SemanticScholarSource
 from backend.memory.novelty import NoveltyDetector, NoveltyThresholds
 from backend.memory.vector_store import ChromaVectorStore, memory_id_for
+from backend.reconciliation.dedupe import PaperReconciler
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ class PhaseOneResult:
 class PhaseTwoResult(PhaseOneResult):
     memory_count_before: int
     memory_count_after: int
+    relevant_count_before_reconciliation: int
+    reconciliation_merged_count: int
 
 
 @dataclass(frozen=True)
@@ -137,6 +140,14 @@ def build_novelty_detector(settings: Settings) -> NoveltyDetector:
     )
 
 
+def build_reconciler(settings: Settings) -> PaperReconciler:
+    return PaperReconciler(
+        title_similarity_threshold=settings.dedupe_title_similarity_threshold,
+        author_overlap_threshold=settings.dedupe_author_overlap_threshold,
+        date_window_days=settings.dedupe_date_window_days,
+    )
+
+
 async def run_pipeline(
     target_date: date,
     *,
@@ -146,6 +157,7 @@ async def run_pipeline(
     sources: list[PaperSource] | None = None,
     relevance_filter: RelevanceFilter | None = None,
     novelty_detector: NoveltyDetector | None = None,
+    reconciler: PaperReconciler | None = None,
 ) -> PhaseTwoResult:
     """Execute ingestion, relevance filtering, novelty analysis, and persistence."""
 
@@ -160,8 +172,11 @@ async def run_pipeline(
     )
     if novelty_detector is None:
         novelty_detector = await asyncio.to_thread(build_novelty_detector, settings)
+    if reconciler is None:
+        reconciler = build_reconciler(settings)
+    reconciliation = reconciler.reconcile(phase_one.relevant)
     memory_before = await asyncio.to_thread(novelty_detector.memory.count)
-    processed = await asyncio.to_thread(novelty_detector.process, phase_one.relevant)
+    processed = await asyncio.to_thread(novelty_detector.process, reconciliation.papers)
     memory_after = await asyncio.to_thread(novelty_detector.memory.count)
     return PhaseTwoResult(
         target_date=phase_one.target_date,
@@ -171,6 +186,8 @@ async def run_pipeline(
         source_errors=phase_one.source_errors,
         memory_count_before=memory_before,
         memory_count_after=memory_after,
+        relevant_count_before_reconciliation=reconciliation.input_count,
+        reconciliation_merged_count=reconciliation.merged_count,
     )
 
 
@@ -196,6 +213,7 @@ async def run_agent(
     sources: list[PaperSource] | None = None,
     relevance_filter: RelevanceFilter | None = None,
     novelty_detector: NoveltyDetector | None = None,
+    reconciler: PaperReconciler | None = None,
     research_tools: ResearchTools | None = None,
     summarizer: GeminiSummarizer | Any | None = None,
 ) -> PhaseThreeResult:
@@ -221,6 +239,7 @@ async def run_agent(
         sources=sources,
         relevance_filter=relevance_filter,
         novelty_detector=novelty_detector,
+        reconciler=reconciler,
     )
     if research_tools is None:
         research_tools = ResearchTools(
@@ -257,6 +276,8 @@ async def run_agent(
         source_errors=phase_two.source_errors,
         memory_count_before=phase_two.memory_count_before,
         memory_count_after=phase_two.memory_count_after,
+        relevant_count_before_reconciliation=phase_two.relevant_count_before_reconciliation,
+        reconciliation_merged_count=phase_two.reconciliation_merged_count,
         summarized_count=summarized_count,
         skipped_duplicate_count=skipped_duplicate_count,
         summary_errors=summary_errors,
@@ -277,6 +298,10 @@ def result_as_dict(
     if isinstance(result, PhaseTwoResult):
         payload["memory_count_before"] = result.memory_count_before
         payload["memory_count_after"] = result.memory_count_after
+        payload["relevant_count_before_reconciliation"] = (
+            result.relevant_count_before_reconciliation
+        )
+        payload["reconciliation_merged_count"] = result.reconciliation_merged_count
     if isinstance(result, PhaseThreeResult):
         payload["summarized_count"] = result.summarized_count
         payload["skipped_duplicate_count"] = result.skipped_duplicate_count
@@ -317,6 +342,11 @@ def _print_human(result: PhaseOneResult | PhaseTwoResult | PhaseThreeResult) -> 
     print("Sources: " + source_summary)
     if isinstance(result, PhaseTwoResult):
         print(f"Memory: {result.memory_count_before} -> {result.memory_count_after} papers")
+        print(
+            f"Reconciliation: {result.relevant_count_before_reconciliation} records -> "
+            f"{len(result.relevant)} papers "
+            f"({result.reconciliation_merged_count} merged)"
+        )
     if isinstance(result, PhaseThreeResult):
         print(
             f"Summaries: {result.summarized_count} | "
