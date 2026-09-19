@@ -50,6 +50,15 @@ def _metadata_for(paper: PaperRecord) -> dict[str, str | int | float | bool]:
         metadata["novelty_verdict"] = paper.novelty_verdict
     if paper.citation_count is not None:
         metadata["citation_count"] = paper.citation_count
+    if paper.summary is not None:
+        metadata["summary"] = paper.summary
+    if paper.why_it_matters is not None:
+        metadata["why_it_matters"] = paper.why_it_matters
+    if paper.summary_citations:
+        metadata["summary_citations_json"] = json.dumps(
+            [citation.model_dump(mode="json") for citation in paper.summary_citations],
+            ensure_ascii=False,
+        )
     return metadata
 
 

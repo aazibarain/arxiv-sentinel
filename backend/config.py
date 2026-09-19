@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     novelty_incremental_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     novelty_duplicate_threshold: float = Field(default=0.92, ge=0.0, le=1.0)
     novelty_top_k: int = Field(default=5, ge=1, le=100)
+    gemini_model: str = "gemini-3.5-flash-lite"
+    summary_max_attempts: int = Field(default=3, ge=1, le=5)
+    grounding_span_similarity_threshold: float = Field(default=0.90, ge=0.5, le=1.0)
 
 
 @lru_cache

@@ -18,8 +18,10 @@ def normalize_whitespace(value: str) -> str:
 class SummaryCitation(BaseModel):
     """A generated claim and the exact source text used to support it."""
 
-    claim: str
-    source_span: str
+    claim: str = Field(description="A factual claim made in the generated summary.")
+    source_span: str = Field(
+        description="A short contiguous passage copied from the supplied abstract."
+    )
 
 
 class SimilarPaper(BaseModel):
@@ -54,6 +56,7 @@ class PaperRecord(BaseModel):
     novelty_verdict: Literal["novel", "incremental", "duplicate"] | None = None
     novelty_matches: list[SimilarPaper] = Field(default_factory=list)
     summary: str | None = None
+    why_it_matters: str | None = None
     summary_citations: list[SummaryCitation] = Field(default_factory=list)
     ingested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

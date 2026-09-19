@@ -5,7 +5,7 @@ learning and AI security. It discovers newly published work from arXiv, Semantic
 Scholar, and OpenAlex, normalizes every result into one schema, and makes the final
 relevance decision with semantic embeddings rather than keyword rules.
 
-This repository currently contains the Phase 1 and Phase 2 vertical slices:
+This repository currently contains the Phase 1 through Phase 3 vertical slices:
 
 - adapters for all three research sources;
 - a shared, validated `PaperRecord` contract;
@@ -13,7 +13,10 @@ This repository currently contains the Phase 1 and Phase 2 vertical slices:
 - a fault-isolated async pipeline and runnable CLI;
 - persistent Chroma memory with cosine nearest-neighbor retrieval;
 - explainable novelty verdicts with links to the closest prior papers;
-- deterministic tests for normalization, relevance, and novelty judgment.
+- keyless Semantic Scholar and OpenAlex research tools;
+- structured Gemini summaries with claim-to-abstract citations;
+- a programmatic grounding gate that rejects and retries unsupported output;
+- deterministic tests for ingestion, relevance, novelty, tools, and grounding.
 
 Discovery queries are intentionally broad. They control how much material each
 source returns, but they do **not** decide relevance. The local embedding model does
@@ -29,6 +32,7 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env
+# Add GEMINI_API_KEY to .env
 pytest
 python -m backend.pipeline --date 2026-09-15 --limit-per-source 50
 ```
@@ -44,6 +48,7 @@ Useful CLI options:
 python -m backend.pipeline --help
 python -m backend.pipeline --date 2026-09-15 --json
 python -m backend.pipeline --threshold 0.45 --limit-per-source 100
+python -m backend.pipeline --date 2026-09-15 --no-summaries
 ```
 
 ## Current architecture
@@ -67,14 +72,23 @@ arXiv / Semantic Scholar / OpenAlex
     novelty verdict + closest-paper evidence
                   |
                   v
+  keyless citation and metadata enrichment
+                  |
+                  v
+      Gemini structured summary generation
+                  |
+                  v
+ programmatic claim/span grounding validation
+                  |
+                  v
           enriched JSON / terminal digest
 ```
 
 ## Configuration
 
-See `.env.example`. Secrets are ignored from the first commit. Phases 1 and 2 do not
-require Gemini or any scholar API key. `GEMINI_API_KEY` is reserved for grounded
-summarization and RAG in Phase 3.
+See `.env.example`. Secrets are ignored from the first commit. No scholar API key is
+used. `GEMINI_API_KEY` is read only from the environment for Phase 3 summaries and
+must never be committed.
 
 Novelty is measured as `1 - highest prior-paper cosine similarity` and classified
 with configurable defaults:
@@ -87,9 +101,15 @@ Every result includes its closest prior papers and their similarities so the ver
 can be inspected. Relevant papers are stored immediately after assessment, allowing
 the pipeline to catch duplicates within the same run as well as across days.
 
+For each novel or incremental paper, the agent gathers available citation and
+OpenAlex context, then asks Gemini for structured `summary`, `why_it_matters`, and
+claim/span citations. Code verifies that every cited span occurs in, or closely
+matches, the supplied abstract and that every generated sentence maps to a citation
+claim. Failed grounding is returned to Gemini for correction up to three times.
+Duplicates are retained in memory but skipped for generation to conserve quota.
+
 ## Roadmap
 
-- Phase 3: Gemini tool use, grounded summaries, and grounding verification.
 - Phase 4: cross-source identity reconciliation.
 - Phase 5: FastAPI digest/Q&A endpoints and the Next.js dashboard.
 - Phase 6: scheduled ingestion after persistence/deployment decisions are settled.

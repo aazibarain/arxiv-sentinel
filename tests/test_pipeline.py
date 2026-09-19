@@ -1,11 +1,14 @@
 import asyncio
 from datetime import date
 
+from backend.agent.summarizer import GroundedSummary
+from backend.agent.tools import ResearchContext
+from backend.config import Settings
 from backend.filtering.relevance import RelevanceFilter
 from backend.ingestion.schema import PaperRecord
 from backend.memory.novelty import NoveltyDetector
 from backend.memory.vector_store import ChromaVectorStore
-from backend.pipeline import run_phase_one, run_pipeline
+from backend.pipeline import run_agent, run_phase_one, run_pipeline
 from tests.test_relevance import MappingEmbedder
 
 
@@ -89,3 +92,91 @@ def test_full_pipeline_remembers_paper_and_detects_rerun(tmp_path: object) -> No
     assert second.relevant[0].novelty_verdict == "duplicate"
     assert second.memory_count_before == 1
     assert second.memory_count_after == 1
+
+
+class FakeResearchTools:
+    async def build_context(self, paper: PaperRecord) -> ResearchContext:
+        return ResearchContext(memory_matches=paper.novelty_matches)
+
+
+class FakeSummarizer:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def summarize(self, paper: PaperRecord, context: ResearchContext) -> GroundedSummary:
+        self.calls += 1
+        output = GroundedSummary(
+            summary="The paper studies a prompt injection attack against an autonomous agent.",
+            why_it_matters="The prompt injection attack exposes a security weakness in the agent.",
+            citations=[
+                {
+                    "claim": (
+                        "The paper studies a prompt injection attack against an autonomous agent."
+                    ),
+                    "source_span": "The paper studies a prompt injection attack",
+                },
+                {
+                    "claim": (
+                        "The prompt injection attack exposes a security weakness in the agent."
+                    ),
+                    "source_span": "prompt injection attack against an autonomous agent",
+                },
+            ],
+        )
+        paper.summary = output.summary
+        paper.why_it_matters = output.why_it_matters
+        paper.summary_citations = output.citations
+        return output
+
+
+def test_phase_three_summarizes_novel_papers_and_skips_rerun_duplicates(
+    tmp_path: object,
+) -> None:
+    abstract = (
+        "The paper studies a prompt injection attack against an autonomous agent "
+        "and exposes a security weakness."
+    )
+    vectors = {"prototype": [1.0, 0.0], abstract: [1.0, 0.0]}
+    relevance = RelevanceFilter(MappingEmbedder(vectors), threshold=0.5, references=("prototype",))
+    detector = NoveltyDetector(ChromaVectorStore(tmp_path))
+    summarizer = FakeSummarizer()
+    settings = Settings(_env_file=None)
+
+    def new_record() -> PaperRecord:
+        return PaperRecord(
+            title="Agent Attack",
+            abstract=abstract,
+            authors=["Researcher"],
+            published_date=date(2026, 9, 15),
+            source_ids={"arxiv": "2609.20000"},
+            source_urls={"arxiv": "https://arxiv.org/abs/2609.20000"},
+        )
+
+    first = asyncio.run(
+        run_agent(
+            date(2026, 9, 15),
+            settings=settings,
+            sources=[FakeSource("arxiv", [new_record()])],
+            relevance_filter=relevance,
+            novelty_detector=detector,
+            research_tools=FakeResearchTools(),
+            summarizer=summarizer,
+        )
+    )
+    second = asyncio.run(
+        run_agent(
+            date(2026, 9, 15),
+            settings=settings,
+            sources=[FakeSource("arxiv", [new_record()])],
+            relevance_filter=relevance,
+            novelty_detector=detector,
+            research_tools=FakeResearchTools(),
+            summarizer=summarizer,
+        )
+    )
+
+    assert first.summarized_count == 1
+    assert first.relevant[0].summary is not None
+    assert second.skipped_duplicate_count == 1
+    assert second.summarized_count == 0
+    assert summarizer.calls == 1
