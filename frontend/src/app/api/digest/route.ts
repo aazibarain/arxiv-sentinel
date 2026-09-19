@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-import { digest } from "@/lib/data";
+import { loadLatestDigest } from "@/lib/data";
 
-export function GET(request: NextRequest) {
-  const requestedDate = request.nextUrl.searchParams.get("date");
-  const papers = !requestedDate || requestedDate === digest.digest_date ? digest.papers : [];
-  return NextResponse.json({
-    date: requestedDate ?? digest.digest_date,
-    available_dates: [digest.digest_date],
-    count: papers.length,
-    papers,
-  });
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const result = await loadLatestDigest();
+  if (!result.digest) {
+    return NextResponse.json(
+      { state: result.state, detail: result.detail, count: 0, papers: [] },
+      { status: result.state === "empty" ? 200 : 503 },
+    );
+  }
+  return NextResponse.json({ ...result.digest, count: result.digest.papers.length });
 }

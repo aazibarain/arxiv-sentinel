@@ -5,7 +5,7 @@ learning and AI security. It discovers newly published work from arXiv, Semantic
 Scholar, and OpenAlex, normalizes every result into one schema, and makes the final
 relevance decision with semantic embeddings rather than keyword rules.
 
-This repository currently contains the Phase 1 through Phase 5 vertical slices:
+This repository contains the original local Python agent and the production web runtime:
 
 - adapters for all three research sources;
 - a shared, validated `PaperRecord` contract;
@@ -20,7 +20,11 @@ This repository currently contains the Phase 1 through Phase 5 vertical slices:
 - deterministic tests for ingestion, relevance, reconciliation, novelty, tools, and grounding.
 - SQLite-backed digest persistence with FastAPI digest, paper, and grounded Q&A endpoints;
 - a responsive Next.js dashboard with topic search, inspectable paper evidence, and corpus chat;
-- a Vercel-ready server route that keeps the Gemini key server-side and validates citation spans.
+- a Vercel-deployed agent that keeps Gemini and storage credentials server-side;
+- durable daily digests and a rolling research corpus in Vercel Blob;
+- scheduled ingestion through a protected Vercel Cron route;
+- live dashboard, paper, digest, and grounded corpus-Q&A APIs; and
+- explicit loading, empty, partial-source, and storage-error states.
 
 Discovery queries are intentionally broad. They control how much material each
 source returns, but they do **not** decide relevance. The local embedding model does
@@ -65,10 +69,9 @@ npm run dev
 ```
 
 The FastAPI docs are available at `http://localhost:8000/docs`; the dashboard is at
-`http://localhost:3000`. The repository includes a small, clearly bounded demonstration
-digest built from public arXiv abstracts so the interface is populated before the first
-live pipeline run. Running the pipeline replaces or adds records in the local SQLite
-digest database.
+`http://localhost:3000`. The Python runtime persists locally to SQLite and Chroma. The deployed
+Next.js runtime independently persists its live digest and rolling corpus in Vercel Blob; it does
+not use the repository's historical demonstration fixture.
 
 ## Current architecture
 
@@ -103,7 +106,7 @@ arXiv / Semantic Scholar / OpenAlex
  programmatic claim/span grounding validation
                   |
                   v
-     Chroma memory + SQLite digest store
+ local: Chroma + SQLite / production: Vercel Blob
                   |
                   v
  FastAPI API / Next.js dashboard / grounded Q&A
@@ -147,11 +150,13 @@ URLs, and explicit evidence describing why the match was accepted.
 - `POST /ask` retrieves semantically related papers, asks Gemini using only those
   abstracts, and rejects answers whose claims or source spans fail grounding validation.
 
-The deployed Next.js application exposes equivalent server routes for its committed
-demonstration snapshot. The Gemini key is used only in the server-side `/api/ask` route.
-Local Chroma and SQLite remain the source of truth for pipeline runs; Vercel's ephemeral
-filesystem is deliberately not presented as durable vector storage.
+The deployed Next.js application exposes live server routes backed by Vercel Blob. Its daily
+cron collects up to the configured per-source limit, semantically ranks results, merges duplicate
+records, summarizes the top digest papers, and updates the rolling corpus. Both summary and Q&A
+generation require exact source spans; invalid structured output is retried and then replaced by
+an explicitly labeled extractive fallback.
 
-## Roadmap
+## Production operations
 
-- Phase 6: scheduled ingestion after persistence/deployment decisions are settled.
+See `frontend/README.md` for Vercel Blob provisioning, environment variables, cron behavior,
+endpoints, and release verification.

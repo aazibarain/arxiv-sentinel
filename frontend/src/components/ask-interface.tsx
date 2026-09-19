@@ -87,10 +87,19 @@ export function AskInterface() {
 
         {answer && (
           <article className="answer-panel">
-            <div className="answer-label"><Bot size={18} /> GROUNDED ANSWER</div>
+            <div className="answer-label">
+              <span><Bot size={18} /> GROUNDED ANSWER</span>
+              <span className={`answerability ${answer.answerability}`}>{answer.answerability}</span>
+            </div>
             <p className="answer-copy">{answer.answer}</p>
+            {answer.uncertainty && (
+              <div className="answer-uncertainty">
+                <strong>Evidence boundary</strong>
+                <p>{answer.uncertainty}</p>
+              </div>
+            )}
             <div className="citation-list">
-              <h2>Evidence trail</h2>
+              <h2>{answer.citations.length ? "Evidence trail" : "No supportable citations"}</h2>
               {answer.citations.map((citation, index) => (
                 <div className="citation-card" key={`${citation.canonical_id}-${index}`}>
                   <span className="citation-index">{index + 1}</span>

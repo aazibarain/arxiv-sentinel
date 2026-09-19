@@ -2,11 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, CalendarDays, CheckCircle2, Fingerprint, Quote, Users } from "lucide-react";
 
-import { getPaper, preferredSourceUrl, topicFor } from "@/lib/data";
+import { getPaper } from "@/lib/data";
+import { preferredSourceUrl, topicFor } from "@/lib/papers";
+
+export const dynamic = "force-dynamic";
 
 export default async function PaperPage({ params }: PageProps<"/paper/[canonicalId]">) {
   const { canonicalId } = await params;
-  const paper = getPaper(decodeURIComponent(canonicalId));
+  const paper = await getPaper(decodeURIComponent(canonicalId));
   if (!paper) notFound();
   const sourceUrl = preferredSourceUrl(paper);
 
@@ -39,6 +42,7 @@ export default async function PaperPage({ params }: PageProps<"/paper/[canonical
               <span className="section-index">02 / JUDGMENT</span>
               <h2>Why it matters</h2>
               <p>{paper.why_it_matters}</p>
+              {paper.uncertainty && <p className="uncertainty-note">Uncertainty: {paper.uncertainty}</p>}
             </section>
             <section className="content-section">
               <span className="section-index">03 / SOURCE ABSTRACT</span>

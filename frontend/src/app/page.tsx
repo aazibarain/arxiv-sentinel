@@ -1,6 +1,8 @@
 import { Dashboard } from "@/components/dashboard";
-import { digest } from "@/lib/data";
+import { loadLatestDigest } from "@/lib/data";
 
-export default function Home() {
-  return <Dashboard digest={digest} />;
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  return <Dashboard result={await loadLatestDigest()} />;
 }

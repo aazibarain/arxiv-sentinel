@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, BookOpen, Fingerprint, Users } from "lucide-react";
 
-import { topicFor } from "@/lib/data";
+import { topicFor } from "@/lib/papers";
 import type { Paper } from "@/lib/types";
 
 export function PaperCard({ paper, index }: { paper: Paper; index: number }) {
@@ -18,11 +18,12 @@ export function PaperCard({ paper, index }: { paper: Paper; index: number }) {
         <p className="paper-date">PUBLISHED {paper.published_date}</p>
         <h3>{paper.title}</h3>
         <p className="authors"><Users size={15} /> {paper.authors.slice(0, 3).join(", ")}{paper.authors.length > 3 ? ` +${paper.authors.length - 3}` : ""}</p>
-        <p className="summary">{paper.summary}</p>
+        <p className="summary">{paper.summary ?? "A grounded summary is not available yet."}</p>
         <div className="score-row">
           <div><span>Relevance</span><strong>{Math.round((paper.relevance_score ?? 0) * 100)}%</strong></div>
           <div><span>Novelty</span><strong>{Math.round((paper.novelty_score ?? 0) * 100)}%</strong></div>
           <div><span>Evidence</span><strong>{paper.summary_citations.length} spans</strong></div>
+          <div><span>Confidence</span><strong>{paper.summary_confidence ?? "pending"}</strong></div>
         </div>
       </div>
       <div className="paper-card-footer">

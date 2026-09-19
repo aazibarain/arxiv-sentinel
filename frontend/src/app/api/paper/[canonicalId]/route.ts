@@ -7,7 +7,7 @@ export async function GET(
   context: RouteContext<"/api/paper/[canonicalId]">,
 ) {
   const { canonicalId } = await context.params;
-  const paper = getPaper(decodeURIComponent(canonicalId));
+  const paper = await getPaper(decodeURIComponent(canonicalId));
   if (!paper) return NextResponse.json({ detail: "Paper not found" }, { status: 404 });
   return NextResponse.json(paper);
 }
