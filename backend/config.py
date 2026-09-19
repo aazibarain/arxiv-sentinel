@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     dedupe_title_similarity_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
     dedupe_author_overlap_threshold: float = Field(default=0.50, ge=0.0, le=1.0)
     dedupe_date_window_days: int = Field(default=30, ge=0, le=365)
+    digest_db_path: Path = Path("data/arxiv_sentinel.db")
+    qa_top_k: int = Field(default=5, ge=1, le=10)
+    qa_max_attempts: int = Field(default=3, ge=1, le=5)
+    cors_origins: str = "http://localhost:3000"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Return configured browser origins without accepting wildcard credentials."""
+
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache

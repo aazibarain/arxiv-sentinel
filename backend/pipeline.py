@@ -14,6 +14,7 @@ from backend.agent.grounding import GroundingValidator
 from backend.agent.summarizer import GeminiSummarizer
 from backend.agent.tools import ResearchTools
 from backend.config import Settings, get_settings
+from backend.db.models import DigestStore
 from backend.filtering.embed import SentenceTransformerEmbedder
 from backend.filtering.relevance import RelevanceFilter
 from backend.ingestion.arxiv_source import ArxivSource
@@ -385,6 +386,7 @@ def main() -> None:
             threshold=args.threshold,
         )
     )
+    DigestStore(get_settings().digest_db_path).save_digest(result.target_date, result.relevant)
     if args.json:
         print(json.dumps(result_as_dict(result), indent=2))
     else:
