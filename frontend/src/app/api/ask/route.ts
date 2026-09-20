@@ -2,6 +2,7 @@ import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { NextResponse } from "next/server";
 
 import { loadCorpus } from "@/lib/data";
+import { generationModels } from "@/lib/gemini";
 import { extractiveQAFallback, retrievePapers, validateQAOutput } from "@/lib/qa";
 import type { QAModelOutput } from "@/lib/qa";
 
@@ -89,11 +90,12 @@ export async function POST(request: Request) {
 
   try {
     const basePrompt = JSON.stringify({ question, retrieved_papers: evidence });
+    const models = generationModels();
     let validationError = "";
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < models.length; attempt += 1) {
       try {
         const response = await ai.models.generateContent({
-          model: process.env.GEMINI_MODEL ?? "gemini-3.8-flash",
+          model: models[attempt],
           contents: validationError
             ? `${basePrompt}\n\nThe previous answer failed validation: ${validationError}. Correct it.`
             : basePrompt,
@@ -118,7 +120,9 @@ export async function POST(request: Request) {
         return NextResponse.json(validateQAOutput(parsed, papers));
       } catch (error) {
         validationError = error instanceof Error ? error.message : "Grounding validation failed";
-        if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_200 * 2 ** attempt));
+        if (attempt < models.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1_200 * 2 ** attempt));
+        }
       }
     }
     return NextResponse.json(extractiveQAFallback(question, papers, validationError || "Grounding validation failed"));

@@ -1,5 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
+import { generationModels } from "../gemini";
 import { normalizeText, tokenCoverage } from "./text";
 import type { Paper, SummaryCitation, SummaryConfidence } from "../types";
 
@@ -109,11 +110,12 @@ async function summarizeBatch(ai: GoogleGenAI, papers: Paper[]): Promise<Paper[]
     title: paper.title,
     abstract: paper.abstract,
   }));
+  const models = generationModels();
   let validationError = "";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < models.length; attempt += 1) {
     try {
       const response = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL ?? "gemini-3.8-flash",
+        model: models[attempt],
         contents: JSON.stringify({ papers: input, validation_error: validationError || null }),
         config: {
           systemInstruction:
@@ -140,7 +142,9 @@ async function summarizeBatch(ai: GoogleGenAI, papers: Paper[]): Promise<Paper[]
       });
     } catch (error) {
       validationError = error instanceof Error ? error.message : "Grounding validation failed";
-      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_200 * 2 ** attempt));
+      if (attempt < models.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1_200 * 2 ** attempt));
+      }
     }
   }
   throw new Error(validationError || "Gemini summary validation failed");

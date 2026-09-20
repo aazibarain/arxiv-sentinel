@@ -53,9 +53,9 @@ protected `GET /api/cron/ingest`.
 
 Gemini receives only retrieved paper metadata and abstracts. Structured generation must return
 verbatim, contiguous abstract spans. The server verifies every span and claim, retries invalid
-output up to three times, and constructs the displayed answer only from validated claims. When
-model access, quota, or validation fails, the API returns an explicit limited-confidence
-extractive result instead of unsupported prose.
+output across the configured capable model fallback chain, and constructs the displayed answer
+only from validated claims. When model access, quota, or validation still fails, the API returns
+an explicit limited-confidence extractive result instead of unsupported prose.
 
 ## Verification
 

@@ -137,13 +137,14 @@ export function parseSemanticScholarItem(item: SemanticScholarItem): Paper | nul
 }
 
 export async function fetchSemanticScholar(startDate: string, endDate: string, limit: number): Promise<Paper[]> {
-  const perQuery = Math.min(100, Math.max(1, Math.ceil(limit / DISCOVERY_QUERIES.length)));
+  const rotationSeed = Number(endDate.replaceAll("-", ""));
+  const queries = [DISCOVERY_QUERIES[rotationSeed % DISCOVERY_QUERIES.length]];
+  const perQuery = Math.min(100, Math.max(1, limit));
   const records = new Map<string, Paper>();
   const failures: Error[] = [];
   const inclusiveEnd = new Date(`${endDate}T00:00:00Z`);
   inclusiveEnd.setUTCDate(inclusiveEnd.getUTCDate() - 1);
-  for (const [index, query] of DISCOVERY_QUERIES.entries()) {
-    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1_100));
+  for (const query of queries) {
     const params = new URLSearchParams({
       query,
       publicationDateOrYear: `${startDate}:${inclusiveEnd.toISOString().slice(0, 10)}`,
