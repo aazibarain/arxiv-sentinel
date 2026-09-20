@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
-import { generationModels } from "../gemini";
+import { generationModels, supportsThinkingLevel } from "../gemini";
 import { normalizeText, tokenCoverage } from "./text";
 import type { Paper, SummaryCitation, SummaryConfidence } from "../types";
 
@@ -125,7 +125,9 @@ async function summarizeBatch(ai: GoogleGenAI, papers: Paper[]): Promise<Paper[]
             "If the abstract does not support a requested detail, lower confidence and state that exact limitation in uncertainty.",
           temperature: 0.1,
           maxOutputTokens: 6000,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+          ...(supportsThinkingLevel(models[attempt])
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } }
+            : {}),
           responseMimeType: "application/json",
           responseJsonSchema: responseSchema,
         },

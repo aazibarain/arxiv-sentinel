@@ -2,7 +2,7 @@ import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { NextResponse } from "next/server";
 
 import { loadCorpus } from "@/lib/data";
-import { generationModels } from "@/lib/gemini";
+import { generationModels, supportsThinkingLevel } from "@/lib/gemini";
 import { extractiveQAFallback, retrievePapers, validateQAOutput } from "@/lib/qa";
 import type { QAModelOutput } from "@/lib/qa";
 
@@ -108,7 +108,9 @@ export async function POST(request: Request) {
               "Use answerability=insufficient with zero citations when the abstracts cannot support an answer. Do not fill evidence gaps with outside knowledge.",
             temperature: 0.1,
             maxOutputTokens: 5000,
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+            ...(supportsThinkingLevel(models[attempt])
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } }
+              : {}),
             responseMimeType: "application/json",
             responseJsonSchema: answerSchema,
           },

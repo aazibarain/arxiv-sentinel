@@ -8,6 +8,10 @@ export function generationModels(): string[] {
     primary,
     ...(configuredFallbacks?.length
       ? configuredFallbacks
-      : ["gemini-3.7-flash", "gemini-3.6-flash"]),
+      : ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]),
   ])];
+}
+
+export function supportsThinkingLevel(model: string): boolean {
+  return !model.includes("flash-lite");
 }

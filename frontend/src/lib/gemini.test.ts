@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { generationModels } from "./gemini";
+import { generationModels, supportsThinkingLevel } from "./gemini";
 
 const originalPrimary = process.env.GEMINI_MODEL;
 const originalFallbacks = process.env.GEMINI_FALLBACK_MODELS;
@@ -20,6 +20,7 @@ describe("Gemini model routing", () => {
       "gemini-3.8-flash",
       "gemini-3.7-flash",
       "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
     ]);
   });
 
@@ -27,5 +28,10 @@ describe("Gemini model routing", () => {
     process.env.GEMINI_MODEL = "primary";
     process.env.GEMINI_FALLBACK_MODELS = "secondary, tertiary, secondary";
     expect(generationModels()).toEqual(["primary", "secondary", "tertiary"]);
+  });
+
+  it("omits unsupported thinking-level controls for Lite fallbacks", () => {
+    expect(supportsThinkingLevel("gemini-3.5-flash-lite")).toBe(false);
+    expect(supportsThinkingLevel("gemini-3.8-flash")).toBe(true);
   });
 });
