@@ -38,6 +38,22 @@ const HIGH_SIGNAL_PHRASES = [
   "deceptive behavior",
   "certified robustness",
   "ai agent security",
+  "security evaluation",
+  "security benchmark",
+  "safety evaluation",
+  "privacy-preserving",
+  "differential privacy",
+];
+
+const SECURITY_TERMS = [
+  "attack", "adversarial", "backdoor", "defense", "exploit", "harm", "jailbreak",
+  "malicious", "poisoning", "privacy", "robustness", "safety", "secure", "security",
+  "spoofing", "stealing", "threat", "vulnerability",
+];
+
+const AI_TERMS = [
+  "artificial intelligence", "machine learning", "language model", "neural", "llm", "agent",
+  "classifier", "embedding", "transformer", "cnn", "model",
 ];
 
 function cosine(left: number[], right: number[]): number {
@@ -84,6 +100,13 @@ export function lexicalRelevance(paper: Paper): number {
   return Math.min(1, maxReference * 3.4 + titleHits * 0.16 + bodyHits * 0.055 + securityCoverage * 0.18);
 }
 
+export function hasSecurityIntent(paper: Paper): boolean {
+  const body = ` ${paper.title} ${paper.abstract} `.toLowerCase();
+  if (HIGH_SIGNAL_PHRASES.some((phrase) => body.includes(phrase))) return true;
+  return SECURITY_TERMS.some((term) => body.includes(term)) &&
+    AI_TERMS.some((term) => body.includes(term));
+}
+
 export async function filterAndRank(papers: Paper[]): Promise<{
   papers: Paper[];
   method: "gemini_embedding" | "lexical_fallback";
@@ -96,13 +119,14 @@ export async function filterAndRank(papers: Paper[]): Promise<{
     const embeddings = await embedTexts(texts);
     const references = embeddings.slice(0, REFERENCE_TOPICS.length);
     papers.forEach((paper, index) => {
-      paper.relevance_score = Math.max(
+      const semanticScore = Math.max(
         ...references.map((reference) => cosine(embeddings[REFERENCE_TOPICS.length + index], reference)),
       );
+      paper.relevance_score = semanticScore * 0.75 + lexicalRelevance(paper) * 0.25;
     });
     return {
       papers: papers
-        .filter((paper) => (paper.relevance_score ?? -1) >= threshold)
+        .filter((paper) => hasSecurityIntent(paper) && (paper.relevance_score ?? -1) >= threshold)
         .sort((left, right) => (right.relevance_score ?? 0) - (left.relevance_score ?? 0)),
       method: "gemini_embedding",
     };
@@ -115,7 +139,7 @@ export async function filterAndRank(papers: Paper[]): Promise<{
     const fallbackThreshold = Number(process.env.LEXICAL_RELEVANCE_THRESHOLD ?? "0.34");
     return {
       papers: papers
-        .filter((paper) => (paper.relevance_score ?? 0) >= fallbackThreshold)
+        .filter((paper) => hasSecurityIntent(paper) && (paper.relevance_score ?? 0) >= fallbackThreshold)
         .sort((left, right) => (right.relevance_score ?? 0) - (left.relevance_score ?? 0)),
       method: "lexical_fallback",
       warning,

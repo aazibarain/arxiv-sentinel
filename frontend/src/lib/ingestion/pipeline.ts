@@ -11,7 +11,13 @@ function isoDate(date: Date): string {
 
 function mergeCorpus(prior: Paper[], current: Paper[], generatedAt: string): CorpusSnapshot {
   const byId = new Map(prior.map((paper) => [paper.canonical_id, paper]));
-  current.forEach((paper) => byId.set(paper.canonical_id, paper));
+  current.forEach((paper) => {
+    const existing = byId.get(paper.canonical_id);
+    byId.set(paper.canonical_id, {
+      ...paper,
+      ingested_at: existing?.ingested_at ?? paper.ingested_at,
+    });
+  });
   const maxCorpusPapers = Number(process.env.CORPUS_MAX_PAPERS ?? "1000");
   return {
     generated_at: generatedAt,
@@ -50,10 +56,17 @@ export async function runProductionIngestion(target = new Date()): Promise<Diges
 
   const ranking = await filterAndRank(sourceResult.papers);
   const allReconciled = reconcilePapers(ranking.papers);
+  const priorToTarget = priorCorpus.papers.filter(
+    (paper) => paper.ingested_at.slice(0, 10) < isoDate(targetDate),
+  );
+  annotateNovelty(allReconciled, priorToTarget);
+  const verdictPriority = { novel: 0, incremental: 1, duplicate: 2 } as const;
   const reconciled = allReconciled
-    .sort((left, right) => (right.relevance_score ?? 0) - (left.relevance_score ?? 0))
+    .sort((left, right) =>
+      verdictPriority[left.novelty_verdict ?? "novel"] - verdictPriority[right.novelty_verdict ?? "novel"] ||
+      (right.relevance_score ?? 0) - (left.relevance_score ?? 0),
+    )
     .slice(0, maxDigestPapers);
-  annotateNovelty(reconciled, priorCorpus.papers);
   await summarizePapers(reconciled, new Map(priorCorpus.papers.map((paper) => [paper.canonical_id, paper])));
 
   const digest: Digest = {

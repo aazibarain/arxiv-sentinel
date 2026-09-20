@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { paper } from "../test-fixtures";
-import { annotateNovelty, lexicalRelevance } from "./rank";
+import { annotateNovelty, hasSecurityIntent, lexicalRelevance } from "./rank";
 
 describe("ranking fallbacks", () => {
   it("gives security research a higher lexical score than unrelated work", () => {
@@ -19,5 +19,17 @@ describe("ranking fallbacks", () => {
     annotateNovelty([current], [paper()]);
     expect(current.novelty_score).toBe(0);
     expect(current.novelty_verdict).toBe("duplicate");
+  });
+
+  it("requires both an AI context and a security intent", () => {
+    expect(hasSecurityIntent(paper())).toBe(true);
+    expect(hasSecurityIntent(paper({
+      title: "Artificial intelligence in Maritime English education",
+      abstract: "This paper studies the use of AI tools for language instruction and digital teaching resources.",
+    }))).toBe(false);
+    expect(hasSecurityIntent(paper({
+      title: "Network security policy review",
+      abstract: "This review covers credential policy, firewall rules, and conventional database administration.",
+    }))).toBe(false);
   });
 });
